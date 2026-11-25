@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Build output goes to ./artifacts; the SQL host tests start the built web app from there. -->
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+  </PropertyGroup>
+</Project>
