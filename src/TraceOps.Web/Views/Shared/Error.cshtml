@@ -1,0 +1,15 @@
+@model ErrorPage
+@{
+    ViewData["Title"] = Model.Title;
+}
+<div class="error-page">
+    <p class="eyebrow">Request / @Model.StatusCode</p>
+    <h1>@Model.Title</h1>
+    @if (Model.TrackingNumber is not null)
+    {
+        <p>Tracking number: <span class="mono">@Model.TrackingNumber</span></p>
+    }
+    <p>Return to the shipment register to continue.</p>
+    <div class="error-actions"><a class="button" href="/shipments">Shipments</a><a href="/shipments#register">Register shipment</a></div>
+    <dl class="error-reference"><dt>Correlation ID</dt><dd class="mono">@Model.CorrelationId</dd></dl>
+</div>

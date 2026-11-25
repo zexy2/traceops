@@ -1,0 +1,90 @@
+@model DetailPage
+@{
+    var shipment = Model.Details.Shipment;
+    ViewData["Title"] = shipment.TrackingNumber;
+    var terminal = shipment.Status is ShipmentStatus.Delivered or ShipmentStatus.Cancelled;
+    ViewData["EventFormHidden"] = terminal;
+    var statuses = Enum.GetNames<ShipmentStatus>();
+    var seed = shipment.TrackingNumber is "DEMO-001" or "DEMO-002" or "DEMO-003";
+    bool Invalid(string key) => ViewData.ModelState.TryGetValue(key, out var entry) && entry.Errors.Count > 0;
+}
+<nav class="breadcrumb" aria-label="Breadcrumb"><a href="/shipments">Shipments</a><span aria-hidden="true">/</span><span class="mono" aria-current="page">@shipment.TrackingNumber</span></nav>
+<div class="page-heading detail-heading">
+    <div><p class="eyebrow">Shipment record</p><h1 class="mono">@shipment.TrackingNumber</h1>@if (seed) { <span class="seed-label">Demo seed</span> }</div>
+    <span class="status status-current">@shipment.Status</span>
+</div>
+<dl class="record-meta">
+    <div><dt>Current status</dt><dd>@shipment.Status</dd></div>
+    <div><dt>Version</dt><dd class="mono">@shipment.Version</dd></div>
+    <div><dt>@(shipment.Version == 0 ? "Registered at (UTC)" : "Last event (UTC)")</dt><dd class="mono"><time datetime="@shipment.LastOccurredAt.ToString("O", CultureInfo.InvariantCulture)">@shipment.LastOccurredAt.ToString("yyyy-MM-dd HH:mm:ss.FFFFFFF 'UTC'", CultureInfo.InvariantCulture)</time></dd></div>
+</dl>
+<div class="workspace">
+    <section class="ledger" aria-labelledby="history-heading">
+        <div class="section-heading"><h2 id="history-heading">Event history</h2><span class="utility-label">Append order · UTC</span></div>
+        @if (Model.Details.Events.Count == 0)
+        {
+            <div class="empty-state"><h3>No lifecycle events recorded yet</h3><p>Registration created this shipment. Its first lifecycle event will appear here.</p></div>
+        }
+        else
+        {
+            <ol class="event-list">
+            @foreach (var item in Model.Details.Events)
+            {
+                <li class="event">
+                    <time class="event-time mono" datetime="@item.OccurredAt.ToString("O", CultureInfo.InvariantCulture)"><span>@item.OccurredAt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</span><span>@item.OccurredAt.ToString("HH:mm:ss.FFFFFFF 'UTC'", CultureInfo.InvariantCulture)</span></time>
+                    <div class="event-body"><h3>@item.Status</h3><dl><div><dt>Source system</dt><dd class="mono">@item.SourceSystem</dd></div><div><dt>Event ID</dt><dd class="mono event-id">@item.EventId</dd></div></dl></div>
+                </li>
+            }
+            </ol>
+        }
+    </section>
+    <section class="form-panel" aria-labelledby="event-heading">
+        <p class="eyebrow">Lifecycle entry</p><h2 id="event-heading">Add event</h2>
+        @await Html.PartialAsync("_ValidationSummary")
+        @if (terminal)
+        {
+            <p class="terminal-note">No further lifecycle transitions.</p>
+        }
+        else
+        {
+            <p>Append an event to this shipment. Recorded events cannot be edited.</p>
+            <form action="@($"/shipments/{Uri.EscapeDataString(shipment.TrackingNumber)}/events")" method="post">
+                @Html.AntiForgeryToken()
+                <div class="field">
+                    <label for="EventId">Event ID <span class="required-label">(required)</span></label>
+                    <input id="EventId" name="EventId" type="text" value="@Model.RetainedEventId" class="mono" aria-invalid="@(Invalid("EventId") ? "true" : "false")" aria-describedby="event-id-help event-id-error" autocomplete="off" spellcheck="false" required />
+                    <p id="event-id-help" class="field-help">Unique UUID identifying this event.</p>
+                    @Html.ValidationMessage("EventId", null, new { id = "event-id-error", @class = "field-error" })
+                </div>
+                <div class="field">
+                    <label for="Status">Status <span class="required-label">(required)</span></label>
+                    <select id="Status" name="Status" aria-invalid="@(Invalid("Status") ? "true" : "false")" aria-describedby="@(statuses.Contains(Model.RetainedStatus, StringComparer.Ordinal) ? "status-help status-error" : "status-help status-error retained-status")" required>
+                    @foreach (var status in statuses)
+                    {
+                        <option value="@status" selected="@(status == Model.RetainedStatus)">@status</option>
+                    }
+                    </select>
+                    <p id="status-help" class="field-help">The shipment lifecycle determines which transitions are valid.</p>
+                    @if (!statuses.Contains(Model.RetainedStatus, StringComparer.Ordinal))
+                    {
+                        <p id="retained-status" class="field-error">Submitted status: <span class="mono">@(Model.RetainedStatus.Length == 0 ? "(empty)" : Model.RetainedStatus)</span>. Select a listed status.</p>
+                    }
+                    @Html.ValidationMessage("Status", null, new { id = "status-error", @class = "field-error" })
+                </div>
+                <div class="field">
+                    <label for="OccurredAt">Occurred at (UTC) <span class="required-label">(required)</span></label>
+                    <input id="OccurredAt" name="OccurredAt" type="text" value="@Model.RetainedOccurredAt" class="mono" aria-invalid="@(Invalid("OccurredAt") ? "true" : "false")" aria-describedby="time-help time-error" autocomplete="off" spellcheck="false" required />
+                    <p id="time-help" class="field-help">Use ISO 8601 UTC with a trailing Z. Example: <span class="mono">2026-11-17T09:42:00Z</span>.</p>
+                    @Html.ValidationMessage("OccurredAt", null, new { id = "time-error", @class = "field-error" })
+                </div>
+                <div class="field">
+                    <label for="SourceSystem">Source system <span class="required-label">(required)</span></label>
+                    <input id="SourceSystem" name="SourceSystem" type="text" value="@Model.RetainedSourceSystem" class="mono" aria-invalid="@(Invalid("SourceSystem") ? "true" : "false")" aria-describedby="source-help source-error" autocomplete="off" spellcheck="false" required />
+                    <p id="source-help" class="field-help">1–64 letters, digits, dots, underscores or hyphens. Examples: <span class="mono">demo.warehouse</span>, <span class="mono">demo.carrier</span>.</p>
+                    @Html.ValidationMessage("SourceSystem", null, new { id = "source-error", @class = "field-error" })
+                </div>
+                <button type="submit">Add event</button>
+            </form>
+        }
+    </section>
+</div>

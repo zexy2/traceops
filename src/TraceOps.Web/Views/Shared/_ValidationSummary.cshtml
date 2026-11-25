@@ -1,0 +1,26 @@
+@if (!ViewData.ModelState.IsValid)
+{
+    <section class="error-summary" role="alert" aria-labelledby="validation-title" tabindex="-1" autofocus>
+        <h2 id="validation-title">Check your submission</h2>
+        <ul>
+        @foreach (var entry in ViewData.ModelState)
+        {
+            foreach (var error in entry.Value.Errors)
+            {
+                var message = string.IsNullOrEmpty(error.ErrorMessage) ? "Check this value and try again." : error.ErrorMessage;
+                var knownField = (entry.Key is "TrackingNumber" or "EventId" or "Status" or "OccurredAt" or "SourceSystem") && !Equals(ViewData["EventFormHidden"], true);
+                <li>
+                @if (knownField)
+                {
+                    <a href="#@entry.Key">@message</a>
+                }
+                else
+                {
+                    @message
+                }
+                </li>
+            }
+        }
+        </ul>
+    </section>
+}

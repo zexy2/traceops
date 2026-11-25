@@ -1,0 +1,31 @@
+@inject TraceOps.Web.Runtime.RuntimeBanner RuntimeBanner
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@ViewData["Title"] · TraceOps</title>
+    <link rel="stylesheet" href="@Url.Content("~/css/site.css")" />
+</head>
+<body>
+    <a class="skip-link" href="#main">Skip to main content</a>
+    <header class="masthead">
+        <div class="shell masthead-inner">
+            <a class="brand" href="/shipments">TraceOps<span class="brand-mark" aria-hidden="true"></span></a>
+            <nav aria-label="Main navigation"><a href="/shipments" aria-current="@(Context.Request.Path == "/shipments" ? "page" : null)">Shipments</a></nav>
+        </div>
+    </header>
+    <div class="shell">
+        @if (RuntimeBanner.StartupStatusText is { } startupStatusText)
+        {
+            <p class="demo-banner">@Html.Raw(RuntimeBanner.Text)<br /><span>@startupStatusText</span></p>
+        }
+        else
+        {
+            <p class="demo-banner">@Html.Raw(RuntimeBanner.Text)</p>
+        }
+        <main id="main" tabindex="-1">@RenderBody()</main>
+        <footer class="page-footer"><span>TraceOps / Shipment operations</span><span>All times UTC</span></footer>
+    </div>
+</body>
+</html>

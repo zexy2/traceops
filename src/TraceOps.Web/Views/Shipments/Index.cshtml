@@ -1,0 +1,64 @@
+@model ListPage
+@{
+    ViewData["Title"] = "Shipments";
+    var invalidTracking = ViewData.ModelState.TryGetValue("TrackingNumber", out var field) && field.Errors.Count > 0;
+}
+<div class="page-heading">
+    <div><p class="eyebrow">Shipment register</p><h1>Shipments</h1><p class="intro">Shipment records and lifecycle events.</p></div>
+    <a class="text-action" href="#register">Register shipment <span aria-hidden="true">↗</span></a>
+</div>
+<div class="workspace">
+    <section class="manifest" aria-labelledby="manifest-heading">
+        <div class="section-heading"><h2 id="manifest-heading">Manifest</h2><span class="utility-label">Tracking order</span></div>
+        @if (Model.Shipments.Count == 0)
+        {
+            <div class="empty-state"><h3>No shipments yet.</h3><p>Register a tracking number to begin its event history.</p><a href="#register">Register shipment</a></div>
+        }
+        else
+        {
+            <p class="scroll-hint" id="table-help">Scroll the manifest horizontally to view every column.</p>
+            <div class="table-scroll" role="region" aria-label="Shipment manifest" aria-describedby="table-help" tabindex="0">
+                <table>
+                    <caption class="visually-hidden">Shipments ordered by tracking number. All timestamps are UTC.</caption>
+                    <thead><tr><th scope="col">Tracking number</th><th scope="col">Status</th><th scope="col">Last event (UTC)</th><th scope="col">Version</th></tr></thead>
+                    <tbody>
+                    @foreach (var shipment in Model.Shipments)
+                    {
+                        var seed = shipment.TrackingNumber is "DEMO-001" or "DEMO-002" or "DEMO-003";
+                        <tr>
+                            <th scope="row"><a class="tracking-link mono" href="@($"/shipments/{Uri.EscapeDataString(shipment.TrackingNumber)}")">@shipment.TrackingNumber</a>@if (seed) { <span class="seed-label">Demo seed</span> }</th>
+                            <td><span class="status">@shipment.Status</span></td>
+                            <td class="timestamp">
+                                @if (shipment.Version == 0)
+                                {
+                                    <span>No events yet</span><span class="cell-note">Registered <time datetime="@shipment.LastOccurredAt.ToString("O", CultureInfo.InvariantCulture)">@shipment.LastOccurredAt.ToString("yyyy-MM-dd HH:mm:ss.FFFFFFF 'UTC'", CultureInfo.InvariantCulture)</time></span>
+                                }
+                                else
+                                {
+                                    <time datetime="@shipment.LastOccurredAt.ToString("O", CultureInfo.InvariantCulture)">@shipment.LastOccurredAt.ToString("yyyy-MM-dd HH:mm:ss.FFFFFFF 'UTC'", CultureInfo.InvariantCulture)</time>
+                                }
+                            </td>
+                            <td class="mono">@shipment.Version</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+    <section class="form-panel" id="register" aria-labelledby="register-heading">
+        <p class="eyebrow">New record</p><h2 id="register-heading">Register shipment</h2>
+        <p>Start a shipment at <span class="mono">Registered</span>. Add lifecycle events from its detail page.</p>
+        @await Html.PartialAsync("_ValidationSummary")
+        <form action="/shipments" method="post">
+            @Html.AntiForgeryToken()
+            <div class="field">
+                <label for="TrackingNumber">Tracking number <span class="required-label">(required)</span></label>
+                <input id="TrackingNumber" name="TrackingNumber" type="text" value="@Model.RetainedTrackingNumber" class="mono" aria-invalid="@(invalidTracking ? "true" : "false")" aria-describedby="tracking-help tracking-error" autocomplete="off" spellcheck="false" required />
+                <p class="field-help" id="tracking-help">1–32 uppercase letters, digits or hyphens. Example: <span class="mono">TRK-0001</span>.</p>
+                @Html.ValidationMessage("TrackingNumber", null, new { id = "tracking-error", @class = "field-error" })
+            </div>
+            <button type="submit">Register shipment</button>
+        </form>
+    </section>
+</div>
