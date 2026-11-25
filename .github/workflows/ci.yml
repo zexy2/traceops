@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Domain, web and SOAP tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet build TraceOps.sln -p:RestoreLockedMode=true
+      - run: dotnet test tests/TraceOps.Domain.Tests --no-build
+      - run: dotnet test tests/TraceOps.Web.Tests --no-build
+      - run: dotnet test tests/TraceOps.Soap.Tests --no-build
+
+  sql:
+    name: SQL Server integration tests
+    runs-on: ubuntu-latest
+    env:
+      MSSQL_SA_PASSWORD: Ci-Sa-${{ github.run_id }}-Aa1!
+      TRACEOPS_APP_PASSWORD: Ci-App-${{ github.run_id }}-Bb2!
+      APP_SCHEMA: m4_6a1c0f2e9b7d4c3a8e5f1b2c3d4e5f60
+      APP_RUN_ID: 6a1c0f2e-9b7d-4c3a-8e5f-1b2c3d4e5f60
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_PID: "Developer"
+          MSSQL_SA_PASSWORD: Ci-Sa-${{ github.run_id }}-Aa1!
+        ports:
+          - 14331:1433
+        options: >-
+          --hostname traceops-sql
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -o /dev/null"
+          --health-interval 5s --health-timeout 5s --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Provision database, runtime login and app schema
+        run: |
+          id=${{ job.services.sqlserver.id }}
+          docker cp sql "$id":/sql
+          docker cp src/TraceOps.SqlServer/Migrations/001_M4.sql "$id":/sql/001_M4.sql
+          sqlcmd() { docker exec "$id" /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -b "$@"; }
+          sqlcmd -i /sql/01-database.sql -v AppPassword="$TRACEOPS_APP_PASSWORD"
+          sqlcmd -d TraceOpsLabDB -i /sql/02-app-schema.sql -v Schema="$APP_SCHEMA" RunId="$APP_RUN_ID"
+          sqlcmd -d TraceOpsLabDB -i /sql/001_M4.sql -v Schema="$APP_SCHEMA"
+          sqlcmd -d TraceOpsLabDB -i /sql/03-grant.sql -v Schema="$APP_SCHEMA"
+      - run: dotnet build TraceOps.sln -p:RestoreLockedMode=true
+      - name: SQL Server integration tests
+        env:
+          M4_SQLSERVER_FIXTURE_CONNECTION: Server=127.0.0.1,14331;Database=TraceOpsLabDB;User Id=sa;Password=${{ env.MSSQL_SA_PASSWORD }};TrustServerCertificate=True
+          ConnectionStrings__TraceOpsSqlServer: Server=127.0.0.1,14331;Database=TraceOpsLabDB;User Id=traceops_app;Password=${{ env.TRACEOPS_APP_PASSWORD }};TrustServerCertificate=True
+        run: dotnet test tests/TraceOps.SqlServer.Tests --no-build
+      - name: SQL host tests (app started against SQL Server)
+        env:
+          M4_SQLSERVER_FIXTURE_CONNECTION: Server=127.0.0.1,14331;Database=TraceOpsLabDB;User Id=sa;Password=${{ env.MSSQL_SA_PASSWORD }};TrustServerCertificate=True
+          ConnectionStrings__TraceOpsSqlServer: Server=127.0.0.1,14331;Database=TraceOpsLabDB;User Id=traceops_app;Password=${{ env.TRACEOPS_APP_PASSWORD }};TrustServerCertificate=True
+        run: dotnet test tests/TraceOps.SqlHost.Tests --no-build
+      - name: Smoke test the app in SQL mode
+        env:
+          TraceOps__Store: SqlServer
+          TraceOps__SqlServer__Schema: ${{ env.APP_SCHEMA }}
+          TraceOps__SqlServer__ExpectedDatabase: TraceOpsLabDB
+          TraceOps__SqlServer__ExpectedServerName: traceops-sql
+          ConnectionStrings__TraceOpsSqlServer: Server=127.0.0.1,14331;Database=TraceOpsLabDB;User Id=traceops_app;Password=${{ env.TRACEOPS_APP_PASSWORD }};TrustServerCertificate=True
+        run: |
+          dotnet run --no-build --project src/TraceOps.Web > app.log 2>&1 &
+          for i in $(seq 1 60); do curl -fs http://127.0.0.1:5080/shipments >/dev/null && break; sleep 1; done
+          curl -fs -X POST http://127.0.0.1:5080/api/v1/shipments -H 'Content-Type: application/json' -d '{"trackingNumber":"CI-0001"}'
+          curl -fs -X POST http://127.0.0.1:5080/api/v1/shipments/CI-0001/events -H 'Content-Type: application/json' \
+            -d "{\"eventId\":\"$(cat /proc/sys/kernel/random/uuid)\",\"status\":\"Accepted\",\"occurredAt\":\"$(date -u -d "+1 min" +%Y-%m-%dT%H:%M:%SZ)\",\"sourceSystem\":\"ci\"}"
+          curl -fs http://127.0.0.1:5080/api/v1/shipments/CI-0001 | tee shipment.json
+          grep -q '"status":"Accepted"' shipment.json
+      - name: App log on failure
+        if: failure()
+        run: cat app.log || true
